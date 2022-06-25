@@ -1,0 +1,340 @@
+#include "lib.h"
+#include "types.h"
+
+//#define LAB4_12
+#define LAB4_3
+//#define LAB4_31
+#define LAB4_32
+//#define LAB4_33
+
+
+
+sem_t ph_fork[5];
+void philosopher(int i);
+
+#define EAT_TIME 2
+
+#define SIZE_OF_BUFFER 5
+#define NUM_TO_PRODUCE 2
+sem_t mutex, empty, full;
+int product[SIZE_OF_BUFFER];
+int in, out;
+void producer();
+void consumer();
+
+#define ReadTime 2
+#define WriteTime 3
+void Reader(int i, sem_t *RCountMutex, sem_t *WriteMutex, int *Rcount, int fel);
+void Writer(int i, sem_t *WriteMutex);
+
+int uEntry(void) {
+
+#ifdef LAB4_12
+	// For lab4.1
+	// Test 'scanf' 
+	int dec = 0;
+	int hex = 0;
+	char str[6];
+	char cha = 0;
+	int ret = 0;
+	while(1){
+		printf("Input:\" Test %%c Test %%6s %%d %%x\"\n");
+		ret = scanf(" Test %c Test %6s %d %x", &cha, str, &dec, &hex);
+		printf("Ret: %d; %c, %s, %d, %x.\n", ret, cha, str, dec, hex);
+		if (ret == 4)
+			break;
+	}
+	
+	// For lab4.2
+	// Test 'Semaphore'
+	
+	int i = 4;
+	//int ret;
+	sem_t sem;
+	printf("Father Process: Semaphore Initializing.\n");
+	ret = sem_init(&sem, 2);
+	if (ret == -1) {
+		printf("Father Process: Semaphore Initializing Failed.\n");
+		exit();
+	}
+
+	ret = fork();
+	if (ret == 0) {
+		while( i != 0) {
+			i --;
+			printf("Child Process: Semaphore Waiting.\n");
+			sem_wait(&sem);
+			printf("Child Process: In Critical Area.\n");
+		}
+		printf("Child Process: Semaphore Destroying.\n");
+		sem_destroy(&sem);
+		exit();
+	}
+	else if (ret != -1) {
+		while( i != 0) {
+			i --;
+			printf("Father Process: Sleeping.\n");
+			sleep(128);
+			printf("Father Process: Semaphore Posting.\n");
+			sem_post(&sem);
+		}
+		printf("Father Process: Semaphore Destroying.\n");
+		sem_destroy(&sem);
+	#ifndef LAB4_3
+		exit();
+	#endif
+	}
+
+#endif	
+#ifdef LAB4_3
+	// For lab4.3
+	// TODO: You need to design and test the philosopher problem.
+	// Note that you can create your own functions.
+	// Requirements are demonstrated in the guide.
+	
+	//philosopher having meal
+	#ifndef LAB4_12
+	int ret;
+	#endif
+	#ifdef LAB4_31
+	printf("philosopher having meal test started!\n");
+	
+	for(int i = 0; i < 5; i++){
+		ret = sem_init((ph_fork + i), 1);
+		if(ret == -1){
+			printf("semaphore fork[%d] failed to initiate! %d\n", i, ret);
+			exit(-1);
+		}
+	}
+
+	//Father process is philosopher_4
+	for(int i = 0; i < 4; i++){
+		ret = fork();
+		if(ret == 0){
+			//pid_t pid = getpid();
+			//printf("pid = %d, philosopher %d is seated...\n", pid, i);
+			philosopher(i);
+			exit(0);
+		}
+		else if(ret == -1){
+			printf("thread philosopher %d failed to create!\n", i);
+			exit(-1);
+		}
+	}
+
+	//printf("pid = %d, Father process is philosopher_4\n", getpid());
+	philosopher(4);
+	printf("philosopher having meal test ended!\n\n");
+	for(int i = 0; i < 5; i++){
+		sem_destroy(ph_fork + i);
+	}
+	#endif
+	//producer-consumer
+	/*Let's assume that we have a buffer with size 5*/
+	/*each producer has to make 3 products, and consumer will get 12 products in total*/
+
+	#ifdef LAB4_32
+	printf("producer-consumer test started!\n");
+	sem_init(&mutex, 1);
+	sem_init(&empty, SIZE_OF_BUFFER);
+	sem_init(&full, 0);
+
+	int sel;
+	asm volatile("movw %%ds, %0":"=r"(sel));
+
+	//printf("Father process is consumer\n");
+	for(int i = 0; i < 4; i++){
+		ret = fork();
+		if(ret == 0){
+			producer(sel);
+			exit(0);
+		}
+		else if(ret == -1){
+			printf("process of producer_%d fail to fork!\n", i);
+		}
+	}
+	consumer(sel);
+	sem_destroy(&mutex);
+	sem_destroy(&empty);
+	sem_destroy(&full);
+	printf("producer-consumer test ended!\n\n");
+	#endif
+	//Reader-Writer problem
+	/*There are 3 readers and 3 writers, and let Father process to be one of the writer_2*/
+	//int ret;
+
+	#ifdef LAB4_33
+	printf("Reader and Writer test started!\n");
+	sem_t ReadMutex, WriteMutex, RCountMutex;
+	ret = sem_init(&ReadMutex, 1);
+	ret += sem_init(&WriteMutex, 1);
+	ret += sem_init(&RCountMutex, 1);
+	if(ret != 0){
+		printf("semaphore init failed\n");
+	}
+	int Rcount = 0;
+	#ifndef LAB4_32
+	int sel = 0;
+	#endif
+	asm volatile("movw %%ds, %0":"=r"(sel));
+	//printf("sel = %x\n", sel);
+	for(int i = 0; i < 3; i++){
+		ret = fork();
+		if(ret == 0){
+			Reader(i, &RCountMutex, &WriteMutex, &Rcount, sel);
+			exit(0);
+		}
+	}
+	for(int i = 0; i < 2; i++){
+		ret = fork();
+		if(ret == 0){
+			Writer(i, &WriteMutex);
+			exit(0);
+		}
+	}
+
+	Writer(2, &WriteMutex);
+	sleep(128 * 6);
+	printf("Reader and Writer test ended!\n");
+	#endif
+	exit(0);
+#endif
+	return 0;
+}
+
+void philosopher(int i){
+	pid_t pid = getpid();
+	for(int k = 0; k < EAT_TIME; k++){ //each philosopher eat EAT_TIME  times
+	//while(1){
+		printf("Philosopher %d: think\n", pid);
+		sleep(128); // think
+		if(i % 2 == 0){
+			sleep(128);
+			sem_wait(&ph_fork[i]);
+			sleep(128);
+			sem_wait(&ph_fork[(i + 1) % 5]);
+		}
+		else {
+			sem_wait(&ph_fork[(i + 1) % 5]);
+			sem_wait(&ph_fork[i]);
+		}
+		printf("Philosopher %d: eat\n", pid);
+		sleep(128);
+
+		sleep(128);
+		sem_post(&ph_fork[i]);
+		sleep(128);
+		sem_post(&ph_fork[(i + 1) % 5]);
+	}
+	return ;
+}
+
+void consumer(int fsel){
+	//int pid = getpid();
+	int num_product_received = 0;
+	while(num_product_received < NUM_TO_PRODUCE * 4){
+		sleep(128);
+		sem_wait(&full);
+		sleep(128);
+		sem_wait(&mutex);
+		sleep(128);
+		asm volatile("movw %0, %%es"::"m"(fsel));
+		asm volatile("movl %%es:(%1), %0":"=r"(out):"r"(&out));
+		printf("Consumer : consume\n");
+		out = (out + 1) % SIZE_OF_BUFFER;
+		asm volatile("movl %0, %%es:(%1)"::"r"(out), "r"(&out));
+		sleep(128);
+		sem_post(&mutex);
+		sleep(128);
+		sem_post(&empty);
+		num_product_received++;
+	}
+	return ;
+}
+
+void producer(int fsel){
+	int pid = getpid();
+	int num_product_produced = 0;
+	while(num_product_produced < NUM_TO_PRODUCE){
+		//make a product
+		sleep(128);
+		sem_wait(&empty);
+		sleep(128);
+		sem_wait(&mutex);
+		sleep(128);
+		asm volatile("movw %0, %%es"::"m"(fsel));
+		asm volatile("movl %%es:(%1), %0":"=r"(in):"r"(&in));
+		product[in] = pid;
+		in = (in + 1) %SIZE_OF_BUFFER;
+		asm volatile("movl %0, %%es:(%1)"::"r"(in), "r"(&in));
+		printf("Producer %d: produce\n", pid);
+		sleep(128);
+		sem_post(&mutex);
+		sleep(128);
+		sem_post(&full);
+		num_product_produced++;
+	}
+	return ;
+}
+
+void Reader(int i, sem_t *RCountMutex, sem_t *WriteMutex, int *Rcount, int fsel){
+	pid_t id = getpid();
+	int read_cnt = 0;
+	//printf("Rcount = %d\n", *Rcount);
+	while(read_cnt < ReadTime) {
+		sleep(128);
+		//printf("Reader %d: prepare to read\n", id);
+		sem_wait(RCountMutex);
+		asm volatile("movw %0, %%es"::"m"(fsel));
+		asm volatile("movl %%es:(%1), %0":"=r"(*Rcount):"r"(Rcount));
+		*Rcount += 1;
+		asm volatile("movl %0, %%es:(%1)"::"r"(*Rcount), "r"(Rcount));
+		//Rcount_ch(1, fsel, Rcount);
+		//printf("Reader %d: Rcount = %d\n", id, *Rcount);
+		if(*Rcount == 1){
+			sleep(128);
+			//printf("Reader %d: prepare to block writers\n", id);
+			sem_wait(WriteMutex);
+		}
+		sleep(128);
+		//printf("Reader %d: allow other readers to read\n", id);
+		sem_post(RCountMutex);
+		// read
+		sleep(128);
+		printf("Reader %d: read, total %d reader\n", id, *Rcount);
+		read_cnt++;
+		sleep(128);
+		//printf("Reader %d: prepare to stop reading\n", id);
+		sem_wait(RCountMutex);
+		asm volatile("movw %0, %%es"::"m"(fsel));
+		asm volatile("movl %%es:(%0), %1"::"r"(Rcount), "r"(*Rcount));
+		*Rcount -= 1;
+		asm volatile("movl %0, %%es:(%1)"::"r"(*Rcount), "r"(Rcount));
+		if(*Rcount == 0){
+			sleep(128);
+			//printf("Reader %d: allow writers to write\n", id);
+			sem_post(WriteMutex);
+		}
+		sleep(128);
+		//printf("Reader %d: allow other readers to change Rcount\n", id);
+		sem_post(RCountMutex);
+	}
+	return ;
+}
+
+void Writer(int i, sem_t *WriteMutex) {
+	pid_t id = getpid();
+	int write_cnt = 0;
+	while(write_cnt < WriteTime){
+		sleep(128);
+		//printf("Writer %d: prepare to write\n", id);
+		sem_wait(WriteMutex);
+		//write
+		write_cnt++;
+		sleep(128);
+		printf("Writer %d: write\n", id);
+		sleep(128);
+		sem_post(WriteMutex);
+	}
+	return ;
+}
